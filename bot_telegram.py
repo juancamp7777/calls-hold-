@@ -116,6 +116,11 @@ async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str
 
 
 async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Si el dueño tocó /avance_N, su siguiente mensaje es el texto del avance
+    if es_dueno(update) and "avance_pendiente" in context.user_data:
+        n = context.user_data.pop("avance_pendiente")
+        await _guardar_avance(update, context, n, update.message.text.strip())
+        return
     await atender(update, context, update.message.text, "texto")
 
 
@@ -171,22 +176,36 @@ def _numero(context) -> int | None:
     return int(context.args[0]) if context.args and context.args[0].lstrip("#").isdigit() else None
 
 
+async def _elegir_ticket(update: Update, comando: str, titulo: str):
+    """Sin número: muestra los tickets abiertos con enlaces /comando_N para tocar."""
+    filas = datos.tickets_abiertos()
+    if not filas:
+        await update.message.reply_text("✅ No hay tickets abiertos.")
+        return
+    lineas = [f"{ICONO.get(f['prioridad'], '🟡')} /{comando}_{f['id']}  {f['asunto']}" for f in filas]
+    await update.message.reply_text(f"{titulo}\n\n" + "\n".join(lineas))
+
+
 async def cmd_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_dueno(update):
         return
     n = _numero(context)
-    t = datos.ticket(n) if n else None
+    if not n:
+        await _elegir_ticket(update, "ticket", "¿Cuál ticket quieres ver? Toca uno:")
+        return
+    t = datos.ticket(n)
     if not t:
-        await update.message.reply_text("Uso: /ticket 12")
+        await update.message.reply_text(f"No existe el ticket #{n}.")
         return
     t["campos"] = json.loads(t["campos"] or "[]")
     charla = "\n".join(
-        f"{'👤' if m['rol'] == 'persona' else '🤖'} {m['contenido'][:200]}"
+        f"{'👤' if m['rol'] == 'persona' else '🤖'} {m['contenido'][:600]}"
         for m in datos.ultimos_mensajes(t["canal"], t["conversacion"])
     )
     extra = f"\n\nEstado: {t['estado']}" + (f"\nAvance: {t['avance']}" if t["avance"] else "")
+    acciones = "" if t["estado"] == "cerrado" else f"\n\n👉 /avance_{n}   ·   /cerrar_{n}"
     await update.message.reply_text(
-        formato_ticket(t["id"], t, t["quien"]) + extra + f"\n\nConversación:\n{charla}"
+        (formato_ticket(t["id"], t, t["quien"]) + extra + f"\n\nConversación:\n{charla}")[:3800] + acciones
     )
 
 
@@ -198,34 +217,59 @@ async def _notificar_persona(context, t: dict, texto: str):
             log.exception("No pude avisarle a la persona")
 
 
+async def _guardar_avance(update: Update, context, n: int, texto: str):
+    t = datos.ticket(n)
+    if not t:
+        await update.message.reply_text(f"No existe el ticket #{n}.")
+        return
+    datos.actualizar_ticket(n, estado="en progreso", avance=texto)
+    await _notificar_persona(context, t, f"🔧 Avance de tu ticket #{n} ({t['asunto']}):\n{texto}")
+    await update.message.reply_text(f"✅ Avance del #{n} guardado y enviado a {t['quien']}.")
+
+
 async def cmd_avance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_dueno(update):
         return
     n = _numero(context)
-    texto = " ".join(context.args[1:]).strip()
-    t = datos.ticket(n) if n else None
-    if not t or not texto:
-        await update.message.reply_text("Uso: /avance 12 Ya estoy revisando el error en staging")
+    if not n:
+        await _elegir_ticket(update, "avance", "¿A cuál ticket le das avance? Toca uno:")
         return
-    datos.actualizar_ticket(n, estado="en progreso", avance=texto)
-    await _notificar_persona(context, t, f"🔧 Avance de tu ticket #{n} ({t['asunto']}):\n{texto}")
-    await update.message.reply_text(f"✅ Avance guardado y enviado a {t['quien']}.")
+    texto = " ".join(context.args[1:]).strip()
+    if texto:
+        await _guardar_avance(update, context, n, texto)
+        return
+    t = datos.ticket(n)
+    if not t:
+        await update.message.reply_text(f"No existe el ticket #{n}.")
+        return
+    context.user_data["avance_pendiente"] = n
+    await update.message.reply_text(
+        f"✍️ Escribe el avance del ticket #{n} ({t['asunto']}).\nSe lo envío a {t['quien']}. (/cancelar para salir)"
+    )
+
+
+async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("avance_pendiente", None)
+    await update.message.reply_text("Listo, cancelado.")
 
 
 async def cmd_cerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_dueno(update):
         return
     n = _numero(context)
-    t = datos.ticket(n) if n else None
+    if not n:
+        await _elegir_ticket(update, "cerrar", "¿Cuál ticket cierras? Toca uno:")
+        return
+    t = datos.ticket(n)
     if not t:
-        await update.message.reply_text("Uso: /cerrar 12 [mensaje opcional]")
+        await update.message.reply_text(f"No existe el ticket #{n}.")
         return
     texto = " ".join(context.args[1:]).strip()
     datos.actualizar_ticket(n, estado="cerrado", avance=texto or None)
     await _notificar_persona(
         context, t, f"✅ Tu ticket #{n} ({t['asunto']}) quedó resuelto." + (f"\n{texto}" if texto else "")
     )
-    await update.message.reply_text("✅ Ticket cerrado.")
+    await update.message.reply_text(f"✅ Ticket #{n} cerrado y {t['quien']} quedó notificado.")
 
 
 async def atajo_numero(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,6 +296,7 @@ def main():
         ("ticket", cmd_ticket),
         ("avance", cmd_avance),
         ("cerrar", cmd_cerrar),
+        ("cancelar", cmd_cancelar),
     ]:
         app.add_handler(CommandHandler(nombre, fn))
     app.add_handler(MessageHandler(filters.Regex(ATAJO), atajo_numero))
