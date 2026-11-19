@@ -141,8 +141,8 @@ async def on_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------- comandos
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"¡Hola! 👋 Soy el asistente de {cerebro.NOMBRE_DUENO}. "
-        "Cuéntame qué necesitas (por escrito o con nota de voz) y le dejo el caso listo."
+        f"¡Hola! 👋 Soy la extensión cerebral y de trabajo de {cerebro.NOMBRE_DUENO} 🧠. "
+        "Explícame qué necesitas, así armo el ticket inmediatamente y empezamos el desarrollo."
     )
 
 
