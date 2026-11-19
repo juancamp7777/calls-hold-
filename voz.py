@@ -9,10 +9,13 @@ import os
 
 MODELO_VOZ_A_TEXTO = os.getenv("MODELO_VOZ_A_TEXTO", "whisper-1")
 MODELO_TEXTO_A_VOZ = os.getenv("MODELO_TEXTO_A_VOZ", "gpt-4o-mini-tts")
-VOZ = os.getenv("VOZ", "nova")
+VOZ = os.getenv("VOZ", "coral")
 ESTILO_VOZ = os.getenv(
     "ESTILO_VOZ",
-    "Habla en español con acento colombiano (Bogotá), tono cálido, profesional y ágil.",
+    "Eres una mujer joven de Bogotá hablando por nota de voz con un compañero de trabajo. "
+    "Habla natural y relajado, como en una conversación real: ritmo ágil, entonación variada, "
+    "pausas cortas donde va una coma, sonrisa en la voz. Acento colombiano suave. "
+    "Nada de tono de locutor ni robótico.",
 )
 
 _cliente = None
