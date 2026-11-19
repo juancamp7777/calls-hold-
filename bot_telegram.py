@@ -66,8 +66,40 @@ def formato_ticket(numero: int, t: dict, quien: str) -> str:
 # Los mensajes llegan por dos caminos:
 #  - directo al bot (@CampsHoldBot)                         -> canal "telegram"
 #  - a la cuenta personal del dueño, vía Telegram Business  -> canal "personal:<id de conexión>"
+#  - en un grupo, cuando mencionan al dueño o le responden  -> canal "grupo" (una conversación por persona)
+DUENO_USUARIO = os.getenv("OWNER_USERNAME", "").lstrip("@")  # se completa solo al arrancar
+
+
+def es_grupo(msg) -> bool:
+    return msg.chat.type in ("group", "supergroup")
+
+
 def canal_de(msg) -> str:
-    return f"personal:{msg.business_connection_id}" if msg.business_connection_id else CANAL
+    if msg.business_connection_id:
+        return f"personal:{msg.business_connection_id}"
+    return "grupo" if es_grupo(msg) else CANAL
+
+
+def conversacion_de(msg) -> str:
+    # En un grupo cada persona tiene su propia conversación con el asistente
+    return f"{msg.chat_id}:{msg.from_user.id}" if es_grupo(msg) else str(msg.chat_id)
+
+
+def debe_atender_en_grupo(msg, context) -> bool:
+    """En grupos solo responde si mencionan al dueño o al bot, o si le responden a alguno de los dos."""
+    if not msg.from_user or str(msg.from_user.id) == str(OWNER_CHAT_ID) or msg.from_user.is_bot:
+        return False
+    texto = (msg.text or msg.caption or "").lower()
+    usuarios = [u.lower() for u in (DUENO_USUARIO, context.bot.username) if u]
+    if any(f"@{u}" in texto for u in usuarios):
+        return True
+    for ent in (msg.entities or []) + (msg.caption_entities or []):
+        if ent.type == "text_mention" and ent.user and str(ent.user.id) == str(OWNER_CHAT_ID):
+            return True
+    r = msg.reply_to_message
+    if r and r.from_user and (str(r.from_user.id) == str(OWNER_CHAT_ID) or r.from_user.id == context.bot.id):
+        return True
+    return False
 
 
 def es_del_dueno_en_su_cuenta(msg) -> bool:
@@ -86,12 +118,14 @@ async def accion(context, msg, tipo_accion):
 
 async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str, tipo: str):
     msg = update.effective_message
-    chat_id = msg.chat_id
+    chat_id = conversacion_de(msg)
     canal = canal_de(msg)
     user = msg.from_user
     quien = f"{user.full_name} (@{user.username})" if user.username else user.full_name
-    if canal != CANAL:
+    if canal.startswith("personal:"):
         quien += " [a tu Telegram personal]"
+    elif canal == "grupo":
+        quien += f" [en el grupo {msg.chat.title}]"
 
     datos.guardar_mensaje(canal, chat_id, quien, "persona", tipo, texto)
     await accion(context, msg, ChatAction.TYPING)
@@ -144,6 +178,8 @@ async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if es_del_dueno_en_su_cuenta(msg):
         return
+    if es_grupo(msg) and not debe_atender_en_grupo(msg, context):
+        return
     # Si el dueño tocó /avance_N, su siguiente mensaje es el texto del avance
     if not msg.business_connection_id and es_dueno(update) and "avance_pendiente" in context.user_data:
         n = context.user_data.pop("avance_pendiente")
@@ -155,6 +191,8 @@ async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if es_del_dueno_en_su_cuenta(msg):
+        return
+    if es_grupo(msg) and not debe_atender_en_grupo(msg, context):
         return
     if not voz.disponible():
         await msg.reply_text("Por ahora solo leo mensajes escritos. ¿Me lo escribes, por favor?")
@@ -248,6 +286,13 @@ async def cmd_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _notificar_persona(context, t: dict, texto: str):
+    if t["canal"] == "grupo":
+        grupo = t["conversacion"].split(":")[0]
+        try:
+            await context.bot.send_message(grupo, f"{t['quien'].split(' [')[0]}: {texto}")
+        except Exception:
+            log.exception("No pude avisar en el grupo")
+        return
     conexion = t["canal"].split(":", 1)[1] if t["canal"].startswith("personal:") else None
     if t["canal"] == CANAL or conexion:
         try:
@@ -321,13 +366,23 @@ async def atajo_numero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await {"ticket": cmd_ticket, "avance": cmd_avance, "cerrar": cmd_cerrar}[comando](update, context)
 
 
+async def al_arrancar(app: Application):
+    global DUENO_USUARIO
+    if OWNER_CHAT_ID and not DUENO_USUARIO:
+        try:
+            DUENO_USUARIO = (await app.bot.get_chat(OWNER_CHAT_ID)).username or ""
+        except Exception:
+            log.exception("No pude leer el usuario del dueño")
+    log.info("Atiendo menciones a @%s y @%s en grupos", DUENO_USUARIO or "?", app.bot.username)
+
+
 def main():
     if not TELEGRAM_TOKEN:
         raise SystemExit("Falta TELEGRAM_TOKEN en el archivo .env")
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise SystemExit("Falta ANTHROPIC_API_KEY en el archivo .env")
     datos.crear_tablas()
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(al_arrancar).build()
     for nombre, fn in [
         ("start", cmd_start),
         ("miid", cmd_miid),
