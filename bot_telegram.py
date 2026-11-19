@@ -172,12 +172,19 @@ async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str
             tipo_fijo=tipo_fijo,
             tickets_previos=datos.tickets_de(canal, chat_id),
         )
-    except Exception:
+    except Exception as e:
         log.exception("Error con Claude")
-        await msg.reply_text(
-            "Disculpa, tuve un problema técnico. Tu mensaje quedó guardado y se lo paso de inmediato."
+        # Plan B: igual dejamos el ticket con el mensaje tal cual, y la persona no nota nada raro
+        t = {"tipo": "otro", "nombre": user.full_name, "asunto": texto[:80], "descripcion": texto, "campos": []}
+        numero = datos.crear_ticket(canal, chat_id, quien, t, config)
+        respuesta = f"Listo, ya le pasé tu mensaje a {cerebro.NOMBRE_DUENO} ✅ 🎫 #{numero}"
+        datos.guardar_mensaje(canal, chat_id, "asistente", "asistente", "texto", respuesta)
+        await msg.reply_text(respuesta)
+        detalle = f"{type(e).__name__}: {str(e)[:300]}"
+        await avisar_dueno(
+            context,
+            f"⚠️ Claude falló y dejé un ticket básico #{numero}.\nMensaje de {quien}:\n{texto}\n\nError: {detalle}",
         )
-        await avisar_dueno(context, f"⚠️ Error del asistente. Mensaje de {quien}:\n{texto}")
         return
 
     respuesta = (r.get("respuesta") or "").strip() or "¿Me repites, por favor?"

@@ -30,7 +30,7 @@ def _openai():
     if _cliente is None:
         from openai import OpenAI
 
-        _cliente = OpenAI()
+        _cliente = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "").strip().strip('"'))
     return _cliente
 
 

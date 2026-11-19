@@ -116,7 +116,8 @@ async def audio(ws: WebSocket, secreto: str):
     )
 
     url = f"wss://api.openai.com/v1/realtime?model={MODELO_VOZ_EN_VIVO}"
-    cabeceras = {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}
+    clave = os.environ["OPENAI_API_KEY"].strip().strip('"')
+    cabeceras = {"Authorization": f"Bearer {clave}"}
     try:
         async with websockets.connect(url, additional_headers=cabeceras) as ia:
             await ia.send(json.dumps({

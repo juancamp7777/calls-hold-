@@ -31,7 +31,8 @@ _cliente: anthropic.Anthropic | None = None
 def cliente() -> anthropic.Anthropic:
     global _cliente
     if _cliente is None:
-        _cliente = anthropic.Anthropic()  # lee ANTHROPIC_API_KEY del entorno
+        # .strip(): al pegar claves en paneles web a veces se cuela un espacio o salto de línea
+        _cliente = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", "").strip().strip('"'))
     return _cliente
 
 
