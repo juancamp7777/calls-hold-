@@ -1,47 +1,97 @@
 {
   "_ayuda": "Define qué tickets se crean según la persona y la solicitud. Se relee en cada mensaje: no hay que reiniciar.",
-
+  "estilo": {
+    "_ayuda": "Cómo debe sonar el bot cuando habla con tus jefes y clientes. Pega en 'ejemplos' mensajes reales tuyos.",
+    "tono": "Español de Colombia, cercano pero profesional, seguro y directo, como un desarrollador que tiene todo bajo control. Mensajes cortos, sin rodeos.",
+    "expresiones": [
+      "listo",
+      "dale",
+      "de una",
+      "ya quedó",
+      "le doy prioridad"
+    ],
+    "evitar": [
+      "Estimado/a",
+      "Quedo atento a sus comentarios",
+      "disculpe las molestias",
+      "exceso de emojis",
+      "sonar a call center"
+    ],
+    "ejemplos": []
+  },
   "tipos": {
     "incidente": {
       "descripcion": "Algo está fallando: error, caída, bug, algo lento o que dejó de funcionar",
-      "campos": ["sistema o proyecto", "ambiente (produccion, staging, local)", "que esta pasando exactamente", "desde cuando", "a quien afecta (usuarios, clientes, area)", "mensaje de error o captura", "pasos para reproducirlo"],
+      "campos": [
+        "sistema o proyecto",
+        "ambiente (produccion, staging, local)",
+        "que esta pasando exactamente",
+        "desde cuando",
+        "a quien afecta (usuarios, clientes, area)",
+        "mensaje de error o captura",
+        "pasos para reproducirlo"
+      ],
       "prioridad": "alta",
       "instrucciones": "Si está caído producción o hay clientes afectados ahora, la prioridad es critica. Pide el mensaje de error exacto si lo tienen.",
       "avisar": true
     },
     "requerimiento": {
       "descripcion": "Desarrollo nuevo, cambio o mejora: funcionalidad, pantalla, endpoint, integración, reporte",
-      "campos": ["sistema o proyecto", "que se necesita", "para que sirve o que problema resuelve", "fecha limite", "quien lo solicita o aprueba", "referencias (diseño, documento, ticket de Jira)"],
+      "campos": [
+        "sistema o proyecto",
+        "que se necesita",
+        "para que sirve o que problema resuelve",
+        "fecha limite",
+        "quien lo solicita o aprueba",
+        "referencias (diseño, documento, ticket de Jira)"
+      ],
       "prioridad": "normal",
       "avisar": true
     },
     "consulta": {
       "descripcion": "Pregunta técnica, revisión de código, estimación de tiempo o pedido de información",
-      "campos": ["tema", "pregunta concreta", "para cuando necesita respuesta"],
+      "campos": [
+        "tema",
+        "pregunta concreta",
+        "para cuando necesita respuesta"
+      ],
       "prioridad": "normal",
       "avisar": true
     },
     "reunion": {
       "descripcion": "Quiere agendar una llamada, reunión, daily o revisión",
-      "campos": ["tema", "fecha y hora propuesta", "duracion", "participantes", "enlace o lugar"],
+      "campos": [
+        "tema",
+        "fecha y hora propuesta",
+        "duracion",
+        "participantes",
+        "enlace o lugar"
+      ],
       "prioridad": "normal",
       "avisar": true
     },
     "acceso": {
       "descripcion": "Despliegue, permisos, accesos a servidores, repositorios o bases de datos",
-      "campos": ["sistema", "que accion se necesita", "ambiente", "fecha limite"],
+      "campos": [
+        "sistema",
+        "que accion se necesita",
+        "ambiente",
+        "fecha limite"
+      ],
       "prioridad": "alta",
       "instrucciones": "Nunca pidas ni copies contraseñas, tokens o llaves. Si te las mandan, di que no se deben enviar por aquí.",
       "avisar": true
     },
     "otro": {
       "descripcion": "Cualquier otro mensaje o recado",
-      "campos": ["nombre", "mensaje"],
+      "campos": [
+        "nombre",
+        "mensaje"
+      ],
       "prioridad": "baja",
       "avisar": true
     }
   },
-
   "contactos": {
     "_como_usar": "usuario de Telegram (sin @), id de Telegram o teléfono  ->  tipo fijo. Si no está aquí, Claude clasifica la solicitud.",
     "_ejemplo": "otro"

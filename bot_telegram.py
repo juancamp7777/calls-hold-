@@ -150,28 +150,39 @@ async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str
         return
 
     respuesta = (r.get("respuesta") or "").strip() or "¿Me repites, por favor?"
-    respuesta_voz = respuesta
+    etiqueta = ""
 
     if r.get("crear_ticket") and r.get("ticket"):
         t = r["ticket"]
         numero = datos.crear_ticket(canal, chat_id, quien, t, config)
-        respuesta += f"\n\n🎫 Ticket #{numero}"
+        etiqueta = f"🎫 #{numero}"
         if config.get("tipos", {}).get(t.get("tipo"), {}).get("avisar", True):
             await avisar_dueno(context, "🆕 " + formato_ticket(numero, t, quien))
 
-    datos.guardar_mensaje(canal, chat_id, "asistente", "asistente", "texto", respuesta)
-    await msg.reply_text(respuesta)
+    nota = (r.get("nota_para_ticket") or "").strip()
+    if nota and not r.get("crear_ticket"):
+        abierto = datos.ultimo_ticket_abierto(canal, chat_id)
+        if abierto:
+            datos.agregar_nota(abierto["id"], nota)
+            await avisar_dueno(context, f"📎 Detalle agregado al ticket #{abierto['id']} ({abierto['asunto']}):\n{nota}")
 
-    if RESPONDER_CON_VOZ and tipo == "voz" and voz.disponible():
+    texto_final = f"{respuesta} {etiqueta}".strip()
+    datos.guardar_mensaje(canal, chat_id, "asistente", "asistente", "texto", texto_final)
+
+    # Audio se contesta con audio; texto con texto. Respuestas largas o con código van en texto.
+    para_leer = "```" in respuesta or respuesta.count("\n") >= 3 or len(respuesta) > 500
+    if RESPONDER_CON_VOZ and tipo == "voz" and voz.disponible() and not para_leer:
         try:
             await accion(context, msg, ChatAction.RECORD_VOICE)
             with tempfile.TemporaryDirectory() as tmp:
                 ruta = os.path.join(tmp, "respuesta.ogg")
-                voz.texto_a_voz(respuesta_voz, ruta)
+                voz.texto_a_voz(respuesta, ruta)
                 with open(ruta, "rb") as f:
-                    await msg.reply_voice(f)
+                    await msg.reply_voice(f, caption=etiqueta or None)
+            return
         except Exception:
-            log.exception("No se pudo generar la voz")
+            log.exception("No se pudo generar la voz; respondo en texto")
+    await msg.reply_text(texto_final)
 
 
 async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):

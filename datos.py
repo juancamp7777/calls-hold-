@@ -150,3 +150,21 @@ def ultimos_mensajes(canal, conversacion, limite=10) -> list[dict]:
             (canal, str(conversacion), limite),
         ).fetchall()
     return [dict(f) for f in reversed(filas)]
+
+
+def agregar_nota(numero: int, nota: str) -> bool:
+    with _db() as con:
+        cur = con.execute(
+            "UPDATE tickets SET descripcion = COALESCE(descripcion, '') || ? , actualizado=? WHERE id=?",
+            (f"\n[{ahora()}] {nota}", ahora(), numero),
+        )
+    return cur.rowcount > 0
+
+
+def ultimo_ticket_abierto(canal, conversacion) -> dict | None:
+    with _db() as con:
+        f = con.execute(
+            "SELECT * FROM tickets WHERE canal=? AND conversacion=? AND estado != 'cerrado' ORDER BY id DESC LIMIT 1",
+            (canal, str(conversacion)),
+        ).fetchone()
+    return dict(f) if f else None
