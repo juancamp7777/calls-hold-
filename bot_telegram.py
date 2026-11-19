@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import time
 import tempfile
 
 from dotenv import load_dotenv
@@ -100,6 +101,36 @@ def debe_atender_en_grupo(msg, context) -> bool:
     if r and r.from_user and (str(r.from_user.id) == str(OWNER_CHAT_ID) or r.from_user.id == context.bot.id):
         return True
     return False
+
+
+# ---------------------------------------------------------------- disponibilidad del dueño
+# /disponible  -> el bot no contesta en tu Telegram personal ni en grupos (contestas tú)
+# /ocupado     -> el bot atiende normal
+# Además, si tú escribes en un chat, el bot se calla en ESE chat por PAUSA_MINUTOS.
+PAUSA_MINUTOS = int(os.getenv("PAUSA_MINUTOS", "30"))
+
+
+def _clave_chat(msg) -> str:
+    return f"ultimo_dueno:{msg.chat_id}"
+
+
+async def registrar_actividad_dueno(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Corre antes que todo: si el dueño escribe en su cuenta personal o en un grupo, lo anota."""
+    msg = update.effective_message
+    if not msg or not msg.from_user or str(msg.from_user.id) != str(OWNER_CHAT_ID):
+        return
+    if msg.business_connection_id or es_grupo(msg):
+        datos.guardar_ajuste(_clave_chat(msg), str(time.time()))
+
+
+def debe_callarse(msg) -> bool:
+    """True si el dueño está atendiendo él mismo (solo aplica a su cuenta personal y a grupos)."""
+    if not (msg.business_connection_id or es_grupo(msg)):
+        return False  # a quien le escribe directo al bot siempre se le atiende
+    if datos.leer_ajuste("modo", "ocupado") == "disponible":
+        return True
+    ultimo = float(datos.leer_ajuste(_clave_chat(msg), "0") or 0)
+    return time.time() - ultimo < PAUSA_MINUTOS * 60
 
 
 def es_del_dueno_en_su_cuenta(msg) -> bool:
@@ -191,6 +222,8 @@ async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if es_grupo(msg) and not debe_atender_en_grupo(msg, context):
         return
+    if debe_callarse(msg):
+        return
     # Si el dueño tocó /avance_N, su siguiente mensaje es el texto del avance
     if not msg.business_connection_id and es_dueno(update) and "avance_pendiente" in context.user_data:
         n = context.user_data.pop("avance_pendiente")
@@ -204,6 +237,8 @@ async def on_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if es_del_dueno_en_su_cuenta(msg):
         return
     if es_grupo(msg) and not debe_atender_en_grupo(msg, context):
+        return
+    if debe_callarse(msg):
         return
     if not voz.disponible():
         await msg.reply_text("Por ahora solo leo mensajes escritos. ¿Me lo escribes, por favor?")
@@ -343,6 +378,34 @@ async def cmd_avance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_disponible(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_dueno(update):
+        return
+    datos.guardar_ajuste("modo", "disponible")
+    await update.message.reply_text(
+        "🟢 Modo disponible: no contesto en tu Telegram personal ni en grupos, contestas tú.\n"
+        "Cuando te vayas escribe /ocupado y vuelvo a atender."
+    )
+
+
+async def cmd_ocupado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_dueno(update):
+        return
+    datos.guardar_ajuste("modo", "ocupado")
+    await update.message.reply_text("🔴 Modo ocupado: yo atiendo y te dejo los tickets. (/disponible para volver)")
+
+
+async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_dueno(update):
+        return
+    modo = datos.leer_ajuste("modo", "ocupado")
+    texto = "🟢 Disponible (contestas tú)" if modo == "disponible" else "🔴 Ocupado (contesto yo)"
+    await update.message.reply_text(
+        f"Estado: {texto}\nSi escribes en un chat, me callo ahí {PAUSA_MINUTOS} minutos.\n"
+        "Cambiar: /disponible · /ocupado"
+    )
+
+
 async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("avance_pendiente", None)
     await update.message.reply_text("Listo, cancelado.")
@@ -394,6 +457,8 @@ def main():
         raise SystemExit("Falta ANTHROPIC_API_KEY en el archivo .env")
     datos.crear_tablas()
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(al_arrancar).build()
+    # Grupo -1: se ejecuta antes que los demás y no los bloquea
+    app.add_handler(MessageHandler(filters.ALL, registrar_actividad_dueno), group=-1)
     for nombre, fn in [
         ("start", cmd_start),
         ("miid", cmd_miid),
@@ -402,6 +467,9 @@ def main():
         ("avance", cmd_avance),
         ("cerrar", cmd_cerrar),
         ("cancelar", cmd_cancelar),
+        ("disponible", cmd_disponible),
+        ("ocupado", cmd_ocupado),
+        ("estado", cmd_estado),
     ]:
         app.add_handler(CommandHandler(nombre, fn))
     app.add_handler(MessageHandler(filters.Regex(ATAJO), atajo_numero))

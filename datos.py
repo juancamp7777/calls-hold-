@@ -36,6 +36,10 @@ def crear_tablas() -> None:
                 contenido TEXT NOT NULL,
                 fecha TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS ajustes (
+                clave TEXT PRIMARY KEY,
+                valor TEXT
+            );
             CREATE TABLE IF NOT EXISTS tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 canal TEXT NOT NULL,
@@ -168,3 +172,17 @@ def ultimo_ticket_abierto(canal, conversacion) -> dict | None:
             (canal, str(conversacion)),
         ).fetchone()
     return dict(f) if f else None
+
+
+def leer_ajuste(clave: str, defecto: str = "") -> str:
+    with _db() as con:
+        f = con.execute("SELECT valor FROM ajustes WHERE clave=?", (clave,)).fetchone()
+    return f["valor"] if f else defecto
+
+
+def guardar_ajuste(clave: str, valor: str) -> None:
+    with _db() as con:
+        con.execute(
+            "INSERT INTO ajustes (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",
+            (clave, valor),
+        )

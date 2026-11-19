@@ -38,6 +38,11 @@ Te escriben o te mandan notas de voz cuando no puedes contestar. **Claude** atie
 | `/ticket 12` | Detalle del ticket y la conversación completa |
 | `/avance 12 Ya lo estoy revisando` | Guarda el avance y **se lo envía a quien lo pidió** |
 | `/cerrar 12 Quedó desplegado` | Cierra el ticket y le avisa a la persona |
+| `/disponible` | Contestas tú: el bot no responde en tu Telegram personal ni en grupos |
+| `/ocupado` | El bot atiende y te deja los tickets |
+| `/estado` | Muestra si estás disponible u ocupado |
+
+Además, si **tú** escribes en un chat, el bot se calla en ese chat durante 30 minutos (`PAUSA_MINUTOS` en `.env`).
 
 Si tu jefe vuelve a escribir preguntando "¿cómo va lo del login?", Claude le contesta con el último avance que registraste.
 
