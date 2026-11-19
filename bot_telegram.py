@@ -450,7 +450,7 @@ async def al_arrancar(app: Application):
     log.info("Atiendo menciones a @%s y @%s en grupos", DUENO_USUARIO or "?", app.bot.username)
 
 
-def main():
+def construir_app() -> Application:
     if not TELEGRAM_TOKEN:
         raise SystemExit("Falta TELEGRAM_TOKEN en el archivo .env")
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -477,6 +477,12 @@ def main():
     app.add_handler(MessageHandler(nuevos & (filters.VOICE | filters.AUDIO), on_voz))
     app.add_handler(MessageHandler(nuevos & filters.TEXT & ~filters.COMMAND, on_texto))
     app.add_handler(BusinessConnectionHandler(on_conexion_business))
+    return app
+
+
+def main():
+    """Solo Telegram (sin llamadas). Para Telegram + llamadas usa: python servidor.py"""
+    app = construir_app()
     log.info("Asistente encendido (Claude: %s). Ctrl+C para apagar.", cerebro.MODELO)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

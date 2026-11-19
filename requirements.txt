@@ -1,5 +1,10 @@
 anthropic>=1.0
 python-telegram-bot>=21.0,<23
 python-dotenv>=1.0
-# Opcional, solo para notas de voz (Claude no procesa audio):
 openai>=1.40
+# Servidor de llamadas
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websockets>=13
+httpx>=0.27
+tzdata

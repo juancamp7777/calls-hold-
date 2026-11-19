@@ -3,7 +3,7 @@
 Te escriben o te mandan notas de voz cuando no puedes contestar. **Claude** atiende, entiende qué necesita la persona, le pide los datos que faltan y te deja un **ticket completo** para que actúes sin tener que volver a llamar a preguntar.
 
 - **Fase 1 (lista):** Telegram, con texto y notas de voz.
-- **Fase 2 (pendiente):** llamadas telefónicas con el mismo cerebro, los mismos tickets y la misma configuración.
+- **Fase 2 (lista):** llamadas telefónicas. Contesta con voz en tiempo real y, al colgar, Claude arma el ticket.
 
 ## Cómo está armado
 
@@ -14,6 +14,8 @@ Te escriben o te mandan notas de voz cuando no puedes contestar. **Claude** atie
 | `datos.py` | Base de datos SQLite: mensajes y tickets |
 | `voz.py` | Pasa audio a texto y texto a audio (OpenAI, opcional, porque Claude no procesa audio) |
 | `bot_telegram.py` | Conexión con Telegram y comandos para ti |
+| `llamadas.py` | Contestadora telefónica: Twilio ↔ voz en tiempo real de OpenAI, ticket al colgar |
+| `servidor.py` | Corre Telegram + llamadas juntos (el que se usa en Railway) |
 
 ## Puesta en marcha
 
@@ -76,3 +78,30 @@ Puedes agregar, quitar o renombrar tipos cuando quieras. El archivo se vuelve a 
 
 ## Privacidad
 El archivo `.env` (tus claves) y la base de datos `*.db` (las conversaciones) están en `.gitignore` y **nunca se suben** al repositorio.
+
+
+## Desplegar en Railway (24/7)
+
+1. Crea una cuenta en https://railway.com e inicia sesión con GitHub.
+2. **New Project → Deploy from GitHub repo →** `calls-hold-`.
+3. En el servicio, pestaña **Variables**, agrega las mismas del `.env`:
+   `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OWNER_CHAT_ID`, `NOMBRE_DUENO`, `CONTEXTO`,
+   `TWILIO_AUTH_TOKEN` y `DB_PATH=/data/asistente.db`.
+4. Clic derecho en el servicio → **Attach Volume** → ruta de montaje `/data` (para que los tickets no se borren).
+5. **Settings → Networking → Generate Domain**. Te da una dirección como `calls-hold-production.up.railway.app`.
+6. Abre esa dirección en el navegador: debe decir `calls-hold OK`.
+
+Solo debe haber **una** copia del bot encendida: si corre en Railway, apaga cualquier otra.
+
+## Llamadas con Twilio
+
+1. Crea una cuenta en https://www.twilio.com y compra un número con capacidad de **Voice**.
+2. En el número: **Voice Configuration → A call comes in → Webhook** →
+   `https://TU-DOMINIO.up.railway.app/llamada` (método **HTTP POST**).
+3. Copia el **Auth Token** (Console → Account Info) a la variable `TWILIO_AUTH_TOKEN` de Railway.
+4. En tu celular, desvía las llamadas no contestadas a ese número (códigos GSM, funcionan en la mayoría de operadores):
+   - Si no contestas: `**61*NUMERO#`
+   - Si estás ocupado: `**67*NUMERO#`
+   - Si no hay señal: `**62*NUMERO#`
+   - Quitar todos los desvíos: `##002#`
+   Consulta con tu operador si el desvío tiene costo, sobre todo hacia números de otro país.

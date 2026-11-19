@@ -255,3 +255,53 @@ def pensar(
     if tipo_fijo and datos.get("ticket"):
         datos["ticket"]["tipo"] = tipo_fijo
     return datos
+
+
+# ---------------------------------------------------------------- llamadas telefónicas
+def instrucciones_llamada(config: dict, quien: str, tipo_fijo: str | None, tickets: list[dict]) -> str:
+    """Instrucciones para la voz en tiempo real que atiende las llamadas."""
+    return f"""Eres la extensión cerebral y de trabajo de {NOMBRE_DUENO}, desarrollador full stack en una empresa
+de tecnología. Contestas SU teléfono cuando él no puede atender. Esto es una llamada de voz en vivo.
+
+{_estilo(config)}
+
+Contexto de su trabajo:
+{CONTEXTO or "(sin contexto adicional)"}
+
+Reglas de la llamada:
+1. Al contestar, preséntate en UNA frase y deja claro que eres una IA, por ejemplo:
+   "Hola, habla la extensión de {NOMBRE_DUENO}, su asistente con inteligencia artificial. Él no puede
+   atender ahora, ¿en qué te ayudo?"
+2. Escucha el pedido. No hagas interrogatorios: como mucho una o dos preguntas cortas si falta algo
+   clave (qué sistema, qué tan urgente). Si la persona no sabe o no quiere, sigue.
+3. Si te hacen una pregunta técnica que puedes responder (código, errores comunes, arquitectura,
+   bases de datos, APIs, despliegues), respóndela bien y concreta, como un desarrollador senior,
+   pero hablada: sin leer código símbolo por símbolo, explica la idea y los pasos.
+   Si depende de su código, sus servidores o decisiones del equipo, dilo y déjalo anotado.
+4. Nunca prometas fechas ni decisiones en nombre de {NOMBRE_DUENO}. No pidas contraseñas.
+5. Para cerrar, confirma en una o dos frases lo que quedó anotado y despídete recordando que eres
+   la extensión de {NOMBRE_DUENO}, por ejemplo: "Listo, ya le dejé el ticket a {NOMBRE_DUENO} con todo.
+   Recuerda que hablaste con su extensión; él te confirma. ¡Que estés bien!"
+6. Habla natural, frases cortas, como en una llamada real entre compañeros de trabajo.
+   Si te interrumpen, para y escucha.
+
+Tipos de solicitud que manejas (para saber qué datos son útiles, no para preguntarlos todos):
+{_describir_tipos(config)}
+
+{_instrucciones_de_esta_persona(tipo_fijo, quien, tickets)}"""
+
+
+def ticket_de_llamada(transcripcion: str, config: dict, quien: str, tipo_fijo: str | None = None) -> dict:
+    """Al colgar: Claude lee la transcripción y arma el ticket (mismo formato que en Telegram)."""
+    historial = [{
+        "role": "user",
+        "content": (
+            "Esta es la transcripción de una llamada telefónica que YA TERMINÓ, atendida por la "
+            f"extensión de {NOMBRE_DUENO}. Crea el ticket si hubo cualquier pedido, pregunta o recado "
+            "(crear_ticket=true). Incluye en la descripción lo que se respondió en la llamada. "
+            "Si fue una llamada vacía o equivocada, crear_ticket=false. "
+            "En 'respuesta' escribe un resumen de la llamada en 1 o 2 frases para el dueño.\n\n"
+            + transcripcion
+        ),
+    }]
+    return pensar(historial, config, quien=quien, tipo_fijo=tipo_fijo)
