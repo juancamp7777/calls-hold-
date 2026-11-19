@@ -25,7 +25,7 @@ import datos  # noqa: E402
 import voz  # noqa: E402
 from telegram import Update  # noqa: E402
 from telegram.constants import ChatAction  # noqa: E402
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters  # noqa: E402
+from telegram.ext import Application, BusinessConnectionHandler, CommandHandler, ContextTypes, MessageHandler, filters  # noqa: E402
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 OWNER_CHAT_ID = os.getenv("OWNER_CHAT_ID", "")
@@ -63,28 +63,53 @@ def formato_ticket(numero: int, t: dict, quien: str) -> str:
 
 
 # ---------------------------------------------------------------- atender a la persona
-async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str, tipo: str):
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    quien = f"{user.full_name} (@{user.username})" if user.username else user.full_name
+# Los mensajes llegan por dos caminos:
+#  - directo al bot (@CampsHoldBot)                         -> canal "telegram"
+#  - a la cuenta personal del dueño, vía Telegram Business  -> canal "personal:<id de conexión>"
+def canal_de(msg) -> str:
+    return f"personal:{msg.business_connection_id}" if msg.business_connection_id else CANAL
 
-    datos.guardar_mensaje(CANAL, chat_id, quien, "persona", tipo, texto)
-    await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
+
+def es_del_dueno_en_su_cuenta(msg) -> bool:
+    """En la cuenta personal también llegan los mensajes que escribe el dueño: esos se ignoran."""
+    return bool(msg.business_connection_id) and bool(OWNER_CHAT_ID) and str(msg.from_user.id) == str(OWNER_CHAT_ID)
+
+
+async def accion(context, msg, tipo_accion):
+    try:
+        await context.bot.send_chat_action(
+            msg.chat_id, tipo_accion, business_connection_id=msg.business_connection_id
+        )
+    except Exception:
+        pass
+
+
+async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str, tipo: str):
+    msg = update.effective_message
+    chat_id = msg.chat_id
+    canal = canal_de(msg)
+    user = msg.from_user
+    quien = f"{user.full_name} (@{user.username})" if user.username else user.full_name
+    if canal != CANAL:
+        quien += " [a tu Telegram personal]"
+
+    datos.guardar_mensaje(canal, chat_id, quien, "persona", tipo, texto)
+    await accion(context, msg, ChatAction.TYPING)
 
     config = cerebro.cargar_config()
     tipo_fijo = cerebro.tipo_de_contacto(config, user.username or "", str(user.id))
 
     try:
         r = cerebro.pensar(
-            datos.historial(CANAL, chat_id),
+            datos.historial(canal, chat_id),
             config,
             quien=quien,
             tipo_fijo=tipo_fijo,
-            tickets_previos=datos.tickets_de(CANAL, chat_id),
+            tickets_previos=datos.tickets_de(canal, chat_id),
         )
     except Exception:
         log.exception("Error con Claude")
-        await update.message.reply_text(
+        await msg.reply_text(
             "Disculpa, tuve un problema técnico. Tu mensaje quedó guardado y se lo paso de inmediato."
         )
         await avisar_dueno(context, f"⚠️ Error del asistente. Mensaje de {quien}:\n{texto}")
@@ -95,41 +120,47 @@ async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str
 
     if r.get("crear_ticket") and r.get("ticket"):
         t = r["ticket"]
-        numero = datos.crear_ticket(CANAL, chat_id, quien, t, config)
+        numero = datos.crear_ticket(canal, chat_id, quien, t, config)
         respuesta += f"\n\n🎫 Ticket #{numero}"
         if config.get("tipos", {}).get(t.get("tipo"), {}).get("avisar", True):
             await avisar_dueno(context, "🆕 " + formato_ticket(numero, t, quien))
 
-    datos.guardar_mensaje(CANAL, chat_id, "asistente", "asistente", "texto", respuesta)
-    await update.message.reply_text(respuesta)
+    datos.guardar_mensaje(canal, chat_id, "asistente", "asistente", "texto", respuesta)
+    await msg.reply_text(respuesta)
 
     if RESPONDER_CON_VOZ and tipo == "voz" and voz.disponible():
         try:
-            await context.bot.send_chat_action(chat_id, ChatAction.RECORD_VOICE)
+            await accion(context, msg, ChatAction.RECORD_VOICE)
             with tempfile.TemporaryDirectory() as tmp:
                 ruta = os.path.join(tmp, "respuesta.ogg")
                 voz.texto_a_voz(respuesta_voz, ruta)
                 with open(ruta, "rb") as f:
-                    await update.message.reply_voice(f)
+                    await msg.reply_voice(f)
         except Exception:
             log.exception("No se pudo generar la voz")
 
 
 async def on_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Si el dueño tocó /avance_N, su siguiente mensaje es el texto del avance
-    if es_dueno(update) and "avance_pendiente" in context.user_data:
-        n = context.user_data.pop("avance_pendiente")
-        await _guardar_avance(update, context, n, update.message.text.strip())
+    msg = update.effective_message
+    if es_del_dueno_en_su_cuenta(msg):
         return
-    await atender(update, context, update.message.text, "texto")
+    # Si el dueño tocó /avance_N, su siguiente mensaje es el texto del avance
+    if not msg.business_connection_id and es_dueno(update) and "avance_pendiente" in context.user_data:
+        n = context.user_data.pop("avance_pendiente")
+        await _guardar_avance(update, context, n, msg.text.strip())
+        return
+    await atender(update, context, msg.text, "texto")
 
 
 async def on_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not voz.disponible():
-        await update.message.reply_text("Por ahora solo leo mensajes escritos. ¿Me lo escribes, por favor?")
+    msg = update.effective_message
+    if es_del_dueno_en_su_cuenta(msg):
         return
-    await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
-    archivo = await (update.message.voice or update.message.audio).get_file()
+    if not voz.disponible():
+        await msg.reply_text("Por ahora solo leo mensajes escritos. ¿Me lo escribes, por favor?")
+        return
+    await accion(context, msg, ChatAction.TYPING)
+    archivo = await (msg.voice or msg.audio).get_file()
     with tempfile.TemporaryDirectory() as tmp:
         ruta = os.path.join(tmp, "nota.ogg")
         await archivo.download_to_drive(ruta)
@@ -137,12 +168,19 @@ async def on_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
             texto = voz.voz_a_texto(ruta)
         except Exception:
             log.exception("Error transcribiendo")
-            await update.message.reply_text("No pude escuchar bien el audio. ¿Me lo escribes, por favor?")
+            await msg.reply_text("No pude escuchar bien el audio. ¿Me lo escribes, por favor?")
             return
     if not texto:
-        await update.message.reply_text("No escuché nada en el audio. ¿Lo intentas de nuevo?")
+        await msg.reply_text("No escuché nada en el audio. ¿Lo intentas de nuevo?")
         return
     await atender(update, context, texto, "voz")
+
+
+async def on_conexion_business(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    c = update.business_connection
+    estado = "conectado ✅" if c.is_enabled else "desconectado ❌"
+    log.info("Conexión Business %s: %s", c.id, estado)
+    await avisar_dueno(context, f"🔗 Tu Telegram personal quedó {estado} con el asistente.")
 
 
 # ---------------------------------------------------------------- comandos
@@ -210,9 +248,10 @@ async def cmd_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _notificar_persona(context, t: dict, texto: str):
-    if t["canal"] == CANAL:
+    conexion = t["canal"].split(":", 1)[1] if t["canal"].startswith("personal:") else None
+    if t["canal"] == CANAL or conexion:
         try:
-            await context.bot.send_message(t["conversacion"], texto)
+            await context.bot.send_message(t["conversacion"], texto, business_connection_id=conexion)
         except Exception:
             log.exception("No pude avisarle a la persona")
 
@@ -300,10 +339,12 @@ def main():
     ]:
         app.add_handler(CommandHandler(nombre, fn))
     app.add_handler(MessageHandler(filters.Regex(ATAJO), atajo_numero))
-    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voz))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_texto))
+    nuevos = filters.UpdateType.MESSAGE | filters.UpdateType.BUSINESS_MESSAGE
+    app.add_handler(MessageHandler(nuevos & (filters.VOICE | filters.AUDIO), on_voz))
+    app.add_handler(MessageHandler(nuevos & filters.TEXT & ~filters.COMMAND, on_texto))
+    app.add_handler(BusinessConnectionHandler(on_conexion_business))
     log.info("Asistente encendido (Claude: %s). Ctrl+C para apagar.", cerebro.MODELO)
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
