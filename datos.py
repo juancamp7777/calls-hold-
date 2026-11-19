@@ -4,10 +4,12 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 DB_PATH = Path(os.getenv("DB_PATH", "asistente.db"))
 HISTORIAL_MAX = 16
+ZONA = ZoneInfo(os.getenv("ZONA_HORARIA", "America/Bogota"))
 
 
 def _db() -> sqlite3.Connection:
@@ -17,7 +19,7 @@ def _db() -> sqlite3.Connection:
 
 
 def ahora() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M")
+    return datetime.now(ZONA).strftime("%Y-%m-%d %H:%M")
 
 
 def crear_tablas() -> None:

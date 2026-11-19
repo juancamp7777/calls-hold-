@@ -13,6 +13,7 @@ Comandos del dueño:
 import json
 import logging
 import os
+import re
 import tempfile
 
 from dotenv import load_dotenv
@@ -30,6 +31,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 OWNER_CHAT_ID = os.getenv("OWNER_CHAT_ID", "")
 RESPONDER_CON_VOZ = os.getenv("RESPONDER_CON_VOZ", "si").lower() in ("si", "sí", "true", "1")
 CANAL = "telegram"
+ATAJO = re.compile(r"^/(ticket|avance|cerrar)_?(\d+)(?:@\w+)?\s*(.*)$", re.IGNORECASE | re.DOTALL)
 ICONO = {"critica": "🔴", "alta": "🟠", "normal": "🟡", "baja": "⚪"}
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
@@ -158,7 +160,7 @@ async def cmd_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ No hay tickets abiertos.")
         return
     lineas = [
-        f"{ICONO.get(f['prioridad'], '🟡')} #{f['id']} [{f['tipo']}] {f['fecha']}\n"
+        f"{ICONO.get(f['prioridad'], '🟡')} #{f['id']} [{f['tipo']}] {f['fecha']}  → /ticket_{f['id']}\n"
         f"    {f['nombre'] or f['quien']}: {f['asunto']}"
         for f in filas
     ]
@@ -226,6 +228,16 @@ async def cmd_cerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Ticket cerrado.")
 
 
+async def atajo_numero(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Permite /ticket1, /ticket_1, /avance_1 texto, /cerrar1 ... (sin espacio)."""
+    m = ATAJO.match(update.message.text or "")
+    if not m:
+        return
+    comando, numero, resto = m.group(1).lower(), m.group(2), (m.group(3) or "").lstrip(":").split()
+    context.args = [numero] + resto
+    await {"ticket": cmd_ticket, "avance": cmd_avance, "cerrar": cmd_cerrar}[comando](update, context)
+
+
 def main():
     if not TELEGRAM_TOKEN:
         raise SystemExit("Falta TELEGRAM_TOKEN en el archivo .env")
@@ -242,6 +254,7 @@ def main():
         ("cerrar", cmd_cerrar),
     ]:
         app.add_handler(CommandHandler(nombre, fn))
+    app.add_handler(MessageHandler(filters.Regex(ATAJO), atajo_numero))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voz))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_texto))
     log.info("Asistente encendido (Claude: %s). Ctrl+C para apagar.", cerebro.MODELO)
