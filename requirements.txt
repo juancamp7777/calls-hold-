@@ -1,0 +1,5 @@
+anthropic>=1.0
+python-telegram-bot>=21.0,<23
+python-dotenv>=1.0
+# Opcional, solo para notas de voz (Claude no procesa audio):
+openai>=1.40
