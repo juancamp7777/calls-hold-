@@ -1,5 +1,16 @@
 {
   "_ayuda": "Define qué tickets se crean según la persona y la solicitud. Se relee en cada mensaje: no hay que reiniciar.",
+  "dueno": {
+    "_ayuda": "Tu nombre completo y cómo te dicen. Si alguien usa cualquiera de estos nombres, el bot entiende que eres tú.",
+    "nombre_completo": "Juan Sebastián",
+    "apodos": [
+      "Juan",
+      "Sebas",
+      "Sebastián",
+      "Juan Sebastián",
+      "Juanse"
+    ]
+  },
   "estilo": {
     "_ayuda": "Cómo debe sonar el bot cuando habla con tus jefes y clientes. Pega en 'ejemplos' mensajes reales tuyos.",
     "tono": "Español de Colombia, cercano pero profesional, seguro y directo, como un desarrollador que tiene todo bajo control. Mensajes cortos, sin rodeos.",

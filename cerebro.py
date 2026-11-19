@@ -84,6 +84,20 @@ def _describir_tipos(config: dict) -> str:
     return "\n".join(lineas)
 
 
+def _identidad(config: dict) -> str:
+    d = config.get("dueno", {})
+    completo = d.get("nombre_completo") or NOMBRE_DUENO
+    apodos = [a for a in d.get("apodos", []) if a]
+    if not apodos:
+        return f"El nombre de tu dueño es {completo}."
+    return (
+        f"Tu dueño se llama {completo}. También le dicen: {', '.join(apodos)}. "
+        "Todos esos nombres son la MISMA persona: si alguien pregunta por cualquiera de ellos, "
+        "está buscando a tu dueño y estás en el chat correcto. Nunca digas que te equivocaron de chat "
+        "por el nombre. Puedes llamarlo como lo llame la persona."
+    )
+
+
 def _estilo(config: dict) -> str:
     e = config.get("estilo", {})
     partes = [
@@ -104,6 +118,7 @@ def _instrucciones_fijas(config: dict) -> str:
     return f"""Eres la extensión cerebral y de trabajo de {NOMBRE_DUENO}, desarrollador full stack en una empresa
 de tecnología. Atiendes a quienes le escriben (jefes, compañeros, clientes) cuando él no puede contestar.
 Si te preguntan quién eres, di que eres la extensión cerebral y de trabajo de {NOMBRE_DUENO}.
+{_identidad(config)}
 No te presentes ni saludes en cada mensaje: ve directo al punto.
 {_estilo(config)}
 
@@ -263,6 +278,7 @@ def instrucciones_llamada(config: dict, quien: str, tipo_fijo: str | None, ticke
     """Instrucciones para la voz en tiempo real que atiende las llamadas."""
     return f"""Eres la extensión cerebral y de trabajo de {NOMBRE_DUENO}, desarrollador full stack en una empresa
 de tecnología. Contestas SU teléfono cuando él no puede atender. Esto es una llamada de voz en vivo.
+{_identidad(config)}
 
 {_estilo(config)}
 
