@@ -204,6 +204,10 @@ async def atender(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str
             datos.agregar_nota(abierto["id"], nota)
             await avisar_dueno(context, f"📎 Detalle agregado al ticket #{abierto['id']} ({abierto['asunto']}):\n{nota}")
 
+    aviso = (r.get("aviso_para_dueno") or "").strip()
+    if aviso and not r.get("crear_ticket"):
+        await avisar_dueno(context, f"💬 {quien}: {aviso}")
+
     texto_final = f"{respuesta} {etiqueta}".strip()
     datos.guardar_mensaje(canal, chat_id, "asistente", "asistente", "texto", texto_final)
 
